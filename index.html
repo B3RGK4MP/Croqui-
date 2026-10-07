@@ -1,0 +1,124 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Croqui de Rede</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f3f4f6;--pn:#fff;--tx:#111;--bd:#d1d5db;--ac:#2563eb}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1f2329;--pn:#2b3038;--tx:#eee;--bd:#444b55}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;display:flex;flex-direction:column}
+#bar{display:flex;gap:6px;padding:6px;overflow-x:auto;background:var(--pn);border-bottom:1px solid var(--bd);flex:none}
+#bar button,#sel button{border:1px solid var(--bd);background:var(--pn);color:var(--tx);border-radius:8px;padding:6px 9px;font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:5px}
+button.on{background:var(--ac)!important;color:#fff!important;border-color:var(--ac)!important}
+#bar i{width:1px;background:var(--bd);flex:none}
+#lib{display:flex;gap:6px;padding:6px;overflow-x:auto;background:var(--pn);border-bottom:1px solid var(--bd);flex:none}
+#lib button{border:1px solid var(--bd);background:var(--pn);color:var(--tx);border-radius:8px;padding:4px 8px;font-size:12px;display:flex;flex-direction:column;align-items:center;min-width:74px;gap:2px}
+#lib svg{width:60px;height:22px}
+#wrap{flex:1;overflow:auto;padding:8px}
+#cv{background:#fff;display:block;margin:0 auto;box-shadow:0 1px 6px #0004;touch-action:none;width:100%;max-width:900px}
+#sel{display:none;flex-wrap:wrap;gap:6px;padding:6px;background:var(--pn);border-top:1px solid var(--bd);flex:none}
+#sel input,#sel textarea{font-family:inherit;flex:1;min-width:120px;border:1px solid var(--bd);border-radius:8px;padding:6px;background:var(--bg);color:var(--tx);font-size:14px}
+@media print{body *{visibility:hidden}#cv,#cv *{visibility:visible}#cv{position:absolute;left:0;top:0;width:100%;max-width:none;box-shadow:none}@page{size:A4 portrait;margin:8mm}}
+</style></head><body>
+<div id="bar"></div><div id="lib"></div>
+<div id="wrap"><svg id="cv" viewBox="0 0 800 1100"></svg></div>
+<div id="sel"><textarea id="lab" rows="2" placeholder="Observação / texto (ex.: (1)AM25M40)"></textarea><button id="rot">⟳ Girar</button><input type="range" id="ang" min="0" max="359" style="flex:none;width:100px"><button id="sm">−</button><button id="sp">＋</button><span id="cols" style="display:none;gap:6px;align-items:center"><button data-c="#2563eb" style="background:#2563eb;width:28px;height:28px;padding:0"></button><button data-c="#111" style="background:#111;width:28px;height:28px;padding:0"></button><button data-c="#fff" style="background:#fff;width:28px;height:28px;padding:0"></button><button data-c="#e00" style="background:#e00;width:28px;height:28px;padding:0"></button></span><button id="del">🗑</button></div>
+<script>
+const NS='http://www.w3.org/2000/svg',cv=document.getElementById('cv');
+const LINES={
+bt:{n:'BT aérea',c:'#0a8a0a',w:2},rua:{n:'Rua (laranja)',c:'#f97316',w:4},seta:{n:'Seta (obs.)',c:'#e00',w:2,arrow:1},btsub:{n:'BT subterr.',c:'#0a8a0a',w:2,d:'14 5 2 5'},
+mt:{n:'MT aérea',c:'#c00',w:2,d:'14 7'},mtsub:{n:'MT subterr.',c:'#c00',w:2,d:'14 5 2 5'},mtc:{n:'MT compacta',c:'#c00',w:1.5,d:'6 8'},
+at:{n:'AT 69kV',c:'#1d3fe0',w:2,d:'14 7'},ucja:{n:'UC já ligada',c:'#111',w:1.2},coelce:{n:'Rede Coelce',c:'#111',w:1.5,tick:1},
+fer:{n:'Ferrovia',c:'#777',w:1.5,tickf:1},cerca:{n:'Cerca',c:'#777',w:1.2,x:1},
+br:{n:'Rodovia BR',c:'#111',w:1.2,road:1},ce:{n:'Rodovia CE',c:'#111',w:1.2,road:1}};
+const SYMS={
+poste:{n:'Poste projetado',g:'<rect x="-8" y="-4" width="16" height="8" fill="#fff" stroke="#111" stroke-width="1.5"/>'},
+retirar:{n:'Poste a retirar',g:'<rect x="-8" y="-4" width="16" height="8" fill="#fff" stroke="#111" stroke-width="1.5"/><path d="M-8 4L8-4" stroke="#111" stroke-width="1.5"/>'},
+subst:{n:'Poste substituído',g:'<rect x="-8" y="-4" width="16" height="8" fill="#fff" stroke="#111" stroke-width="1.5"/><path d="M-8 4L8-4V4Z" fill="#111"/>'},
+exist:{n:'Poste existente',g:'<rect x="-8" y="-4" width="16" height="8" fill="#111"/>'},
+trafo:{n:'Trafo existente',g:'<path d="M9-9V9L-9 0Z" fill="#111"/>'},
+uc:{n:'UC a ser ligada',g:'<rect x="-16" y="-10" width="32" height="20" fill="#fff" stroke="#06b6d4" stroke-width="2.5"/>',txt:'01',own:1},
+ucc:{n:'UC em construção',g:'<rect x="-16" y="-10" width="32" height="20" fill="#fff" stroke="#06b6d4" stroke-width="2.5"/>',txt:'01',own:1},
+hi:{n:'Haste a implantar',g:'<path d="M-14 0H6M6-10V10M11-6V6M16-3V3" stroke="#1d3fe0" stroke-width="1.6" fill="none"/><circle cx="-18" cy="-14" r="6" fill="none" stroke="#1d3fe0"/>'},
+he:{n:'Haste existente',g:'<path d="M-14 0H6M6-10V10M11-6V6M16-3V3" stroke="#111" stroke-width="1.6" fill="none"/>'},
+hd:{n:'Haste no desligamento',g:'<path d="M-18 0H8M8-10V10M13-6V6" stroke="#c00" stroke-width="1.6" fill="none"/><circle cx="-18" cy="0" r="4" fill="#c00"/>'},
+arv:{n:'Árvore',g:'<circle r="16" fill="#8fd18f" stroke="#2a8a2a" stroke-width="1.5"/><path d="M0 0L-6 8M0 0L7 6M0 0V-9" stroke="#8a5a2a" stroke-width="2"/>'},
+selo:{n:'Selo cadeado',g:'<path d="M-24 8Q-10-6 0 0" stroke="#c00" fill="none"/><rect x="0" y="-5" width="16" height="10" fill="#e00"/>'}};
+let items=[],tool='sel',kind='bt',sel=-1,hist=[],cur=null,pan=null;
+try{items=JSON.parse(localStorage.getItem('croqui')||'[]')}catch(e){}
+const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function lineSvg(l,i){const s=LINES[l.k],dx=l.x2-l.x1,dy=l.y2-l.y1,len=Math.hypot(dx,dy)||1,ang=Math.atan2(dy,dx)*180/Math.PI,mx=(l.x1+l.x2)/2,my=(l.y1+l.y2)/2;
+let o=`<g data-i="${i}"><line x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}" stroke="transparent" stroke-width="18"/>`;
+const ln=(off,c,w)=>{const nx=-dy/len*off,ny=dx/len*off;return `<line x1="${l.x1+nx}" y1="${l.y1+ny}" x2="${l.x2+nx}" y2="${l.y2+ny}" stroke="${c}" stroke-width="${w}"/>`};
+if(s.road)o+=ln(-4,'#111',1.2)+ln(0,'#e6c200',1.2)+ln(4,'#111',1.2);
+else o+=`<line x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}" stroke="${s.c}" stroke-width="${s.w}" ${s.d?'':'stroke-linecap="square"'} ${s.d?`stroke-dasharray="${s.d}"`:''}/>`;
+if(s.arrow)o+=`<path transform="translate(${l.x2} ${l.y2}) rotate(${ang})" d="M0 0L-14-6V6Z" fill="${s.c}"/>`;
+if(s.tick||s.tickf||s.x){const g=s.tick?'<path d="M-2-7V7M2-7V7" stroke="#111" stroke-width="1.5"/>':s.x?'<path d="M-5-5L5 5M5-5L-5 5" stroke="#777" stroke-width="1.5"/>':'<path d="M-6-7V7M-2-7V7M2-7V7M6-7V7" stroke="#777" stroke-width="1.5"/>';o+=`<g transform="translate(${mx} ${my}) rotate(${ang})"><rect x="-8" y="-8" width="16" height="16" fill="#fff"/>${g}</g>`}
+if(l.label){const a=ang>90||ang<-90?ang+180:ang;o+=`<text transform="translate(${mx} ${my}) rotate(${a}) translate(0 -9)" text-anchor="middle" font-size="11" font-family="Arial" fill="#111">${esc(l.label)}</text>`}
+
+return o+'</g>'}
+function render(){let o='';items.forEach((it,i)=>{if(it.t==='line'&&it.k!=='seta')o+=lineSvg(it,i)});items.forEach((it,i)=>{
+if(it.t==='line'){if(it.k==='seta')o+=lineSvg(it,i);return}
+if(it.t==='sym'){const s=SYMS[it.k];o+=`<g data-i="${i}" transform="translate(${it.x} ${it.y}) rotate(${it.r||0}) scale(${it.s||1})">${s.g}`;if(s.own)o+=`<text y="4" text-anchor="middle" font-size="12" font-family="Arial" fill="#111" transform="rotate(${-(it.r||0)})">${esc(it.num||s.txt)}</text>`;
+if(i===sel)o+='<rect x="-20" y="-16" width="40" height="32" fill="none" stroke="#2563eb" stroke-dasharray="3 3"/>';o+='</g>';
+if(it.label&&!s.own)o+=`<text x="${it.x}" y="${it.y+24*(it.s||1)}" text-anchor="middle" font-size="10" font-family="Arial" fill="#111">${esc(it.label)}</text>`}
+else if(it.t==='circ'){o+=`<g data-i="${i}"><circle cx="${it.x}" cy="${it.y}" r="${it.r}" fill="none" stroke="${i===sel?'#2563eb':'#e00'}" stroke-width="2"/><circle cx="${it.x}" cy="${it.y}" r="${it.r}" fill="none" stroke="transparent" stroke-width="14"/>`;
+if(it.label)o+=`<line x1="${it.x+it.r*.7}" y1="${it.y+it.r*.7}" x2="${it.x+it.r+16}" y2="${it.y+it.r+16}" stroke="#e00"/><text x="${it.x+it.r+20}" y="${it.y+it.r+22}" font-size="12" font-family="Arial" fill="#e00">${esc(it.label)}</text>`;o+='</g>'}
+else{const ls=(it.label||'Texto').split('\n'),fs=13*(it.s||1);o+=`<g data-i="${i}" transform="translate(${it.x} ${it.y}) rotate(${it.r||0})"><text font-size="${fs}" font-family="Arial" fill="${it.c||'#111'}" stroke="transparent" stroke-width="8">${ls.map((t,k)=>`<tspan x="0" y="${k*fs*1.2}">${esc(t)}</tspan>`).join('')}</text>${i===sel?`<rect x="-4" y="${-fs}" width="${Math.max(...ls.map(t=>t.length))*fs*.6+8}" height="${ls.length*fs*1.2+4}" fill="none" stroke="#2563eb" stroke-dasharray="3 3"/>`:''}</g>`}});
+if(sel>=0&&items[sel]){const it=items[sel],hd=(x,y,k)=>`<circle cx="${x}" cy="${y}" r="9" fill="#2563eb" stroke="#fff" stroke-width="2" data-h="${k}"/>`;
+if(it.t==='line')o+=hd(it.x1,it.y1,1)+hd(it.x2,it.y2,2);
+else if(it.t==='sym'||it.t==='text'){const a=(it.r||0)*Math.PI/180,d=32*(it.s||1),hx=it.x+d*Math.sin(a),hy=it.y-d*Math.cos(a);o+=`<line x1="${it.x}" y1="${it.y}" x2="${hx}" y2="${hy}" stroke="#2563eb"/>`+hd(hx,hy,'r')}
+else if(it.t==='circ')o+=hd(it.x+it.r,it.y,'c')}
+if(cur&&cur.t==='line')o+=lineSvg(cur,-1);
+cv.innerHTML=o;const ss=document.getElementById('sel');ss.style.display=sel>=0?'flex':'none';if(sel>=0&&items[sel]){const q=items[sel];const rt=q.t==='sym'||q.t==='text';const cl=document.getElementById('cols');cl.style.display=q.t==='text'?'flex':'none';[...cl.children].forEach(b=>b.style.outline=(q.c||'#111')===b.dataset.c?'3px solid #f59e0b':'none');ang.style.display=rt?'':'none';if(rt)ang.value=q.r||0}
+try{localStorage.setItem('croqui',JSON.stringify(items))}catch(e){}}
+function pt(e){const p=cv.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(cv.getScreenCTM().inverse())}
+const sn=v=>Math.round(v/10)*10,sn5=v=>Math.round(v/5)*5;var free=false;function snapPt(c,ex){let b=null,bd=14;items.forEach((l,i)=>{if(l.t!=='line'||l.k==='seta'||i===ex)return;for(const q of[[l.x1,l.y1],[l.x2,l.y2]]){const d=Math.hypot(c[0]-q[0],c[1]-q[1]);if(d<bd){bd=d;b=q}}});if(b)return b;bd=8;items.forEach((l,i)=>{if(l.t!=='line'||l.k==='seta'||i===ex)return;const dx=l.x2-l.x1,dy=l.y2-l.y1,L=dx*dx+dy*dy||1,u=((c[0]-l.x1)*dx+(c[1]-l.y1)*dy)/L;if(u<=0||u>=1)return;const x=l.x1+u*dx,y=l.y1+u*dy,d=Math.hypot(c[0]-x,c[1]-y);if(d<bd){bd=d;b=[x,y]}});return b||c}
+function ep(ax,ay,p,fr,ex){const f=free||fr;let c=f?[sn5(p.x),sn5(p.y)]:Math.abs(p.x-ax)>=Math.abs(p.y-ay)?[sn(p.x),ay]:[ax,sn(p.y)];if(ex===-2)return c;const q=snapPt(c,ex);if(f||Math.abs(q[0]-ax)<.5||Math.abs(q[1]-ay)<.5)return q;return c}
+function push(){hist.push(JSON.stringify(items));if(hist.length>60)hist.shift()}
+function nearLine(p){let b=null,bd=14;items.forEach(l=>{if(l.t!=='line'||l.k==='seta')return;const dx=l.x2-l.x1,dy=l.y2-l.y1,L=dx*dx+dy*dy||1;let u=Math.max(0,Math.min(1,((p.x-l.x1)*dx+(p.y-l.y1)*dy)/L));const x=l.x1+u*dx,y=l.y1+u*dy,d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;b={x,y,r:Math.round(Math.atan2(dy,dx)*180/Math.PI)}}});return b}
+cv.addEventListener('pointerdown',e=>{const p=pt(e);cv.setPointerCapture(e.pointerId);
+const hit=e.target.closest('[data-i]'),h=e.target.dataset.h;
+if(tool==='hand'){pan={x:e.clientX,y:e.clientY,l:wrap.scrollLeft,t:wrap.scrollTop};return}
+if(tool==='sel'){if(h){push();cur={drag:'h'+h,i:sel};return}
+if(hit){sel=+hit.dataset.i;cur={drag:'mv',i:sel,px:p.x,py:p.y,pushed:0};lab.value=items[sel].label||items[sel].num||''}else{sel=-1}render();return}
+if(tool==='line'){{const st=kind==='seta'?[sn(p.x),sn(p.y)]:snapPt([sn(p.x),sn(p.y)],-1);cur={t:'line',k:kind,x1:st[0],y1:st[1],x2:st[0],y2:st[1]}}return}
+push();
+if(tool==='sym'){const n=nearLine(p);items.push({t:'sym',k:kind,x:n?n.x:sn(p.x),y:n?n.y:sn(p.y),r:n?n.r:0});sel=items.length-1;lab.value='';setTool('sel')}
+else if(tool==='circ'){items.push({t:'circ',x:p.x,y:p.y,r:18,label:''});sel=items.length-1;cur={drag:'rad',i:sel};lab.value=''}
+else if(tool==='text'){items.push({t:'text',x:p.x,y:p.y,label:''});sel=items.length-1;lab.value='';setTool('sel');setTimeout(()=>lab.focus(),60)}
+render()});
+cv.addEventListener('pointermove',e=>{if(pan){wrap.scrollLeft=pan.l-(e.clientX-pan.x);wrap.scrollTop=pan.t-(e.clientY-pan.y);return}
+if(!cur)return;const p=pt(e);
+if(cur.t==='line'){[cur.x2,cur.y2]=ep(cur.x1,cur.y1,p,cur.k==='seta',cur.k==='seta'?-2:-1)}
+else if(cur.drag==='mv'){if(!cur.pushed){push();cur.pushed=1}const it=items[cur.i],dx=p.x-cur.px,dy=p.y-cur.py;cur.px=p.x;cur.py=p.y;
+if(it.t==='line'){it.x1+=dx;it.x2+=dx;it.y1+=dy;it.y2+=dy}else{it.x+=dx;it.y+=dy}}
+else if(cur.drag==='rad'){const it=items[cur.i];it.r=Math.max(10,Math.hypot(p.x-it.x,p.y-it.y))}
+else if(cur.drag==='hr'){const it=items[cur.i];let r=Math.round(Math.atan2(p.x-it.x,it.y-p.y)*180/Math.PI/5)*5;it.r=(r+360)%360}
+else if(cur.drag==='hc'){const it=items[cur.i];it.r=Math.max(10,Math.hypot(p.x-it.x,p.y-it.y))}
+else if(cur.drag[0]==='h'){const l=items[cur.i],a=cur.drag[1]==='1'?['x1','y1','x2','y2']:['x2','y2','x1','y1'];
+[l[a[0]],l[a[1]]]=ep(l[a[2]],l[a[3]],p,l.k==='seta',l.k==='seta'?-2:cur.i)}
+render()});
+cv.addEventListener('pointerup',()=>{pan=null;if(cur&&cur.drag==='mv'){const l=items[cur.i];if(l&&l.t==='line'&&l.k!=='seta'){[l.x1,l.y1]=snapPt([l.x1,l.y1],cur.i);[l.x2,l.y2]=snapPt([l.x2,l.y2],cur.i)}}if(cur&&cur.t==='line'){if(cur.x1!==cur.x2||cur.y1!==cur.y2){push();items.push(cur);sel=items.length-1;lab.value=''}}cur=null;render()});
+const lab=document.getElementById('lab'),wrap=document.getElementById('wrap'),ang=document.getElementById('ang');
+lab.oninput=()=>{if(sel<0)return;const it=items[sel];if(it.t==='sym'&&SYMS[it.k].own)it.num=lab.value;else it.label=lab.value;render()};
+lab.onfocus=()=>push();
+document.getElementById('rot').onclick=()=>{if(sel<0)return;push();const it=items[sel];if(it.t==='sym'||it.t==='text')it.r=((it.r||0)+90)%360;else if(it.t==='line'){const mx=(it.x1+it.x2)/2,my=(it.y1+it.y2)/2,c=Math.cos(Math.PI/12),n=Math.sin(Math.PI/12),f=(x,y)=>[mx+(x-mx)*c-(y-my)*n,my+(x-mx)*n+(y-my)*c];[it.x1,it.y1]=f(it.x1,it.y1);[it.x2,it.y2]=f(it.x2,it.y2)}render()};
+ang.oninput=()=>{if(sel>=0&&(items[sel].t==='sym'||items[sel].t==='text')){items[sel].r=+ang.value;render()}};ang.onpointerdown=push;
+function grow(d){if(sel<0)return;push();const it=items[sel];if(it.t==='sym'||it.t==='text')it.s=Math.max(.4,Math.min(4,(it.s||1)+d*.15));else if(it.t==='circ')it.r=Math.max(10,it.r+d*5);else if(it.t==='line'){const L=Math.hypot(it.x2-it.x1,it.y2-it.y1)||1;it.x2+=(it.x2-it.x1)/L*10*d;it.y2+=(it.y2-it.y1)/L*10*d}render()}
+document.getElementById('cols').onclick=e=>{const c=e.target.dataset.c;if(c&&sel>=0){push();items[sel].c=c;render()}};document.getElementById('sm').onclick=()=>grow(-1);document.getElementById('sp').onclick=()=>grow(1);
+document.getElementById('del').onclick=()=>{if(sel<0)return;push();items.splice(sel,1);sel=-1;render()};
+function setTool(t,k){tool=t;if(k)kind=k;sel=t==='sel'?sel:-1;draw()}
+const bar=document.getElementById('bar'),lib=document.getElementById('lib');
+let zoom=1;
+function draw(){
+const B=(id,txt,fn,on)=>`<button class="${on?'on':''}" onclick="${fn}">${txt}</button>`;
+bar.innerHTML=B(0,'👆 Selecionar',"setTool('sel')",tool==='sel')+B(0,'✋ Mão',"setTool('hand')",tool==='hand')+'<i></i>'+
+B(0,'📏 Linha',"setTool('line',kind==='seta'?'bt':kind)",tool==='line'&&kind!=='seta')+B(0,free?'📐 Ângulo livre':'📐 Só reto',"free=!free;draw()",free)+B(0,'🔣 Símbolo',"setTool('sym','poste')",tool==='sym')+B(0,'⭕ Círculo',"setTool('circ')",tool==='circ')+B(0,'➡ Seta',"setTool('line','seta')",tool==='line'&&kind==='seta')+B(0,'🔤 Texto',"setTool('text')",tool==='text')+'<i></i>'+
+B(0,'↩ Desfazer','undo()')+B(0,'＋','zm(1.25)')+B(0,'－','zm(.8)')+B(0,'🗑 Limpar','clr()')+B(0,'📄 PDF','exportPdf()');
+let h='';
+if(tool==='line')for(const k in LINES){const s=LINES[k];h+=`<button class="${kind===k?'on':''}" onclick="setTool('line','${k}')"><svg viewBox="0 0 60 22"><line x1="2" y1="11" x2="58" y2="11" stroke="${s.c}" stroke-width="${s.w}" ${s.d?`stroke-dasharray="${s.d}"`:''}/></svg>${s.n}</button>`}
+if(tool==='sym')for(const k in SYMS){const s=SYMS[k];h+=`<button class="${kind===k?'on':''}" onclick="setTool('sym','${k}')"><svg viewBox="-24 -16 48 32">${s.g}${s.own?'<text y="4" text-anchor="middle" font-size="12" font-family="Arial" fill="#111">01</text>':''}</svg>${s.n}</button>`}
+lib.style.display=h?'flex':'none';lib.innerHTML=h}
+function undo(){if(hist.length){items=JSON.parse(hist.pop());sel=-1;render()}}
+function zm(f){zoom=Math.max(.5,Math.min(4,zoom*f));cv.style.width=zoom*100+'%';cv.style.maxWidth=zoom>1?'none':'900px'}
+function clr(){if(items.length){push();items=[];sel=-1;render()}}
+function exportPdf(){sel=-1;render();const P=window.Capacitor&&Capacitor.registerPlugin?Capacitor.registerPlugin('PrintPlugin'):null;setTimeout(()=>{try{P?P.print():window.print()}catch(e){window.print()}},150)}
+draw();render();
+</script></body></html>
